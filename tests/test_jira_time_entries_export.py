@@ -144,3 +144,25 @@ def test_load_jira_config_uses_config_file(monkeypatch, tmp_path) -> None:
     assert config.api_token == "token123"
     assert config.worklog_user == "abc123"
     assert config.api_version == "2"
+
+
+def test_load_jira_config_rejects_invalid_api_version(monkeypatch, tmp_path) -> None:
+    config_contents = (
+        "[jira]\n"
+        "base_url = https://example.atlassian.net/\n"
+        "email = config@example.com\n"
+        "api_token = token123\n"
+        "worklog_user = abc123\n"
+        "api_version = config@example.com\n"
+    )
+    config_path = tmp_path / "jira.ini"
+    config_path.write_text(config_contents, encoding="utf-8")
+
+    monkeypatch.delenv("JIRA_BASE_URL", raising=False)
+    monkeypatch.delenv("JIRA_EMAIL", raising=False)
+    monkeypatch.delenv("JIRA_API_TOKEN", raising=False)
+    monkeypatch.delenv("JIRA_WORKLOG_USER", raising=False)
+    monkeypatch.delenv("JIRA_API_VERSION", raising=False)
+
+    with pytest.raises(ValueError, match="Invalid JIRA_API_VERSION"):
+        jtee.load_jira_config(str(config_path))
