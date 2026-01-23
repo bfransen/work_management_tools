@@ -1,5 +1,5 @@
 # work_management_tools
-Varios scripts and tools used to help in the management aspect of work life.   For example, scripts that fetch data from JIRA
+Various scripts and tools used to help in the management aspect of work life.   For example, scripts that fetch data from JIRA
 
 ## JIRA time entries export
 `jira_time_entries_export.py` exports worklog entries for a specific user across
