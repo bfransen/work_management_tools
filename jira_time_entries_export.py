@@ -67,8 +67,6 @@ def load_jira_config(config_path: Optional[str]) -> JiraConfig:
     email = _env_or_config("JIRA_EMAIL", "email", config_values)
     api_token = _env_or_config("JIRA_API_TOKEN", "api_token", config_values)
     api_version = _env_or_config("JIRA_API_VERSION", "api_version", config_values, "3")
-    if api_version:
-        api_version = api_version.strip()
 
     if not base_url:
         raise ValueError("Missing JIRA_BASE_URL or base_url in config")
@@ -85,15 +83,6 @@ def load_jira_config(config_path: Optional[str]) -> JiraConfig:
     )
     if not worklog_user:
         raise ValueError("Missing JIRA_WORKLOG_USER or worklog_user in config")
-
-    if api_version not in {"2", "3"}:
-        hint = ""
-        if "@" in api_version or " " in api_version:
-            hint = " (it looks like an email or contains spaces)"
-        raise ValueError(
-            "Invalid JIRA_API_VERSION. Expected '2' or '3', got "
-            f"'{api_version}'{hint}."
-        )
 
     return JiraConfig(
         base_url=base_url.rstrip("/"),
