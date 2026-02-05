@@ -19,6 +19,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
@@ -159,8 +160,47 @@ def _extract_author_name(worklog: Dict[str, Any]) -> str:
     return author.get("displayName") or author.get("name") or author.get("accountId") or ""
 
 
+def _parse_date_arg(raw_value: Optional[str], label: str) -> Optional[date]:
+    if not raw_value:
+        return None
+    try:
+        return datetime.strptime(raw_value, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError(f"{label} must be in YYYY-MM-DD format.") from exc
+
+
+def _parse_worklog_started_date(worklog: Dict[str, Any]) -> Optional[date]:
+    started = worklog.get("started")
+    if not started:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            return datetime.strptime(started, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _within_date_range(
+    worklog: Dict[str, Any], start_date: Optional[date], end_date: Optional[date]
+) -> bool:
+    if not start_date and not end_date:
+        return True
+    started_date = _parse_worklog_started_date(worklog)
+    if started_date is None:
+        return False
+    if start_date and started_date < start_date:
+        return False
+    if end_date and started_date > end_date:
+        return False
+    return True
+
+
 def fetch_time_entries(
-    config: JiraConfig, issue_keys: Iterable[str]
+    config: JiraConfig,
+    issue_keys: Iterable[str],
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
 ) -> List[Tuple[str, int, float, str]]:
     auth_header = _build_auth_header(config.email, config.api_token)
     entries: List[Tuple[str, int, float, str]] = []
@@ -168,6 +208,8 @@ def fetch_time_entries(
     for issue_key in issue_keys:
         for worklog in _iter_worklogs(config.base_url, auth_header, config.api_version, issue_key):
             if not _matches_user(worklog, config.worklog_user):
+                continue
+            if not _within_date_range(worklog, start_date, end_date):
                 continue
             time_spent_seconds = int(worklog.get("timeSpentSeconds", 0))
             hours = round(time_spent_seconds / 3600, 2)
@@ -225,6 +267,14 @@ def build_parser() -> argparse.ArgumentParser:
             "or email). Defaults to JIRA_WORKLOG_USER or the auth email."
         ),
     )
+    parser.add_argument(
+        "--startdate",
+        help="Start date (YYYY-MM-DD). Only include worklogs on/after this date.",
+    )
+    parser.add_argument(
+        "--enddate",
+        help="End date (YYYY-MM-DD). Only include worklogs on/before this date.",
+    )
     return parser
 
 
@@ -247,13 +297,24 @@ def main() -> int:
             api_version=config.api_version,
         )
 
+    try:
+        start_date = _parse_date_arg(args.startdate, "startdate")
+        end_date = _parse_date_arg(args.enddate, "enddate")
+    except ValueError as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
+        return 2
+
+    if start_date and end_date and start_date > end_date:
+        print("Configuration error: startdate must be on/before enddate.", file=sys.stderr)
+        return 2
+
     issue_keys = _parse_issue_keys(args.issues)
     if not issue_keys:
         print("No valid issue keys provided.", file=sys.stderr)
         return 2
 
     try:
-        entries = fetch_time_entries(config, issue_keys)
+        entries = fetch_time_entries(config, issue_keys, start_date=start_date, end_date=end_date)
     except RuntimeError as exc:
         print(f"Failed to fetch worklogs: {exc}", file=sys.stderr)
         return 1

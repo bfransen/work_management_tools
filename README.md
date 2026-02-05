@@ -33,6 +33,15 @@ python3 jira_time_entries_export.py \
   --output jira_time_entries.csv
 ```
 
+Filter by a date range (inclusive):
+```
+python3 jira_time_entries_export.py \
+  --issues PROJ-1,PROJ-2 \
+  --startdate 2024-01-01 \
+  --enddate 2024-01-31 \
+  --output jira_time_entries.csv
+```
+
 Override the worklog user on the command line:
 ```
 python3 jira_time_entries_export.py \
