@@ -151,6 +151,35 @@ def test_fetch_time_entries_filters_by_date_range(monkeypatch) -> None:
     ]
 
 
+def test_fetch_time_entries_handles_missing_issue(monkeypatch, capsys) -> None:
+    config = jtee.JiraConfig(
+        base_url="https://example.atlassian.net",
+        email="user@example.com",
+        api_token="token",
+        worklog_user="abc123",
+        api_version="3",
+    )
+    worklogs = [
+        {
+            "author": {"accountId": "abc123", "displayName": "Alice"},
+            "timeSpentSeconds": 3600,
+        }
+    ]
+
+    def fake_iter(base_url, auth_header, api_version, issue_key):
+        if issue_key == "MISSING-1":
+            raise jtee.JiraApiError(404, "https://example.invalid", "Not Found")
+        return worklogs
+
+    monkeypatch.setattr("jira_time_entries_export._iter_worklogs", fake_iter)
+    entries = jtee.fetch_time_entries(config, ["MISSING-1", "PROJ-1"])
+
+    assert entries == [("PROJ-1", 3600, 1.0, "Alice")]
+    captured = capsys.readouterr()
+    assert "MISSING-1" in captured.err
+    assert "HTTP 404" in captured.err
+
+
 def test_write_csv_outputs_header_and_rows(tmp_path) -> None:
     entries = [
         ("PROJ-1", 3600, 1.0, "Alice"),

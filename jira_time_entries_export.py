@@ -32,6 +32,14 @@ class JiraConfig:
     api_version: str = "3"
 
 
+class JiraApiError(RuntimeError):
+    def __init__(self, status_code: int, url: str, message: str) -> None:
+        super().__init__(f"HTTP {status_code} while calling {url}: {message}")
+        self.status_code = status_code
+        self.url = url
+        self.message = message
+
+
 def _read_config_file(path: str) -> Dict[str, str]:
     parser = configparser.ConfigParser()
     read_files = parser.read(path)
@@ -112,7 +120,7 @@ def _jira_get_json(base_url: str, auth_header: str, path: str, params: Dict[str,
             return json.loads(payload)
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore") if exc.fp else ""
-        raise RuntimeError(f"HTTP {exc.code} while calling {url}: {body}") from exc
+        raise JiraApiError(exc.code, url, body) from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Network error while calling {url}: {exc}") from exc
 
@@ -206,15 +214,26 @@ def fetch_time_entries(
     entries: List[Tuple[str, int, float, str]] = []
 
     for issue_key in issue_keys:
-        for worklog in _iter_worklogs(config.base_url, auth_header, config.api_version, issue_key):
-            if not _matches_user(worklog, config.worklog_user):
+        try:
+            for worklog in _iter_worklogs(
+                config.base_url, auth_header, config.api_version, issue_key
+            ):
+                if not _matches_user(worklog, config.worklog_user):
+                    continue
+                if not _within_date_range(worklog, start_date, end_date):
+                    continue
+                time_spent_seconds = int(worklog.get("timeSpentSeconds", 0))
+                hours = round(time_spent_seconds / 3600, 2)
+                author_name = _extract_author_name(worklog)
+                entries.append((issue_key, time_spent_seconds, hours, author_name))
+        except JiraApiError as exc:
+            if exc.status_code == 404:
+                print(
+                    f"Warning: issue {issue_key} not found (HTTP 404). Skipping.",
+                    file=sys.stderr,
+                )
                 continue
-            if not _within_date_range(worklog, start_date, end_date):
-                continue
-            time_spent_seconds = int(worklog.get("timeSpentSeconds", 0))
-            hours = round(time_spent_seconds / 3600, 2)
-            author_name = _extract_author_name(worklog)
-            entries.append((issue_key, time_spent_seconds, hours, author_name))
+            raise
 
     return entries
 
