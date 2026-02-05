@@ -190,11 +190,12 @@ def _parse_worklog_started_date(worklog: Dict[str, Any]) -> Optional[date]:
 
 
 def _within_date_range(
-    worklog: Dict[str, Any], start_date: Optional[date], end_date: Optional[date]
+    started_date: Optional[date],
+    start_date: Optional[date],
+    end_date: Optional[date],
 ) -> bool:
     if not start_date and not end_date:
         return True
-    started_date = _parse_worklog_started_date(worklog)
     if started_date is None:
         return False
     if start_date and started_date < start_date:
@@ -209,9 +210,9 @@ def fetch_time_entries(
     issue_keys: Iterable[str],
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-) -> List[Tuple[str, int, float, str]]:
+) -> List[Tuple[str, int, float, str, Optional[date]]]:
     auth_header = _build_auth_header(config.email, config.api_token)
-    entries: List[Tuple[str, int, float, str]] = []
+    entries: List[Tuple[str, int, float, str, Optional[date]]] = []
 
     for issue_key in issue_keys:
         try:
@@ -220,12 +221,15 @@ def fetch_time_entries(
             ):
                 if not _matches_user(worklog, config.worklog_user):
                     continue
-                if not _within_date_range(worklog, start_date, end_date):
+                started_date = _parse_worklog_started_date(worklog)
+                if not _within_date_range(started_date, start_date, end_date):
                     continue
                 time_spent_seconds = int(worklog.get("timeSpentSeconds", 0))
                 hours = round(time_spent_seconds / 3600, 2)
                 author_name = _extract_author_name(worklog)
-                entries.append((issue_key, time_spent_seconds, hours, author_name))
+                entries.append(
+                    (issue_key, time_spent_seconds, hours, author_name, started_date)
+                )
         except JiraApiError as exc:
             if exc.status_code == 404:
                 print(
@@ -242,7 +246,9 @@ def _parse_issue_keys(raw_issues: str) -> List[str]:
     return [key.strip() for key in raw_issues.split(",") if key.strip()]
 
 
-def write_csv(output_path: str, entries: Iterable[Tuple[str, int, float, str]]) -> None:
+def write_csv(
+    output_path: str, entries: Iterable[Tuple[str, int, float, str, Optional[date]]]
+) -> None:
     with open(output_path, "w", newline="", encoding="utf-8") as file_handle:
         writer = csv.writer(file_handle)
         writer.writerow(
@@ -251,10 +257,19 @@ def write_csv(output_path: str, entries: Iterable[Tuple[str, int, float, str]]) 
                 "Time Spent",
                 "Time Spent In Hours",
                 "UserName",
+                "Worklog Date",
             ]
         )
-        for issue_key, time_spent_seconds, hours, author_name in entries:
-            writer.writerow([issue_key, time_spent_seconds, hours, author_name])
+        for issue_key, time_spent_seconds, hours, author_name, worklog_date in entries:
+            writer.writerow(
+                [
+                    issue_key,
+                    time_spent_seconds,
+                    hours,
+                    author_name,
+                    worklog_date.isoformat() if worklog_date else "",
+                ]
+            )
 
 
 def build_parser() -> argparse.ArgumentParser:

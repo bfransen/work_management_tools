@@ -98,8 +98,8 @@ def test_fetch_time_entries_filters_by_user(monkeypatch) -> None:
     entries = jtee.fetch_time_entries(config, ["PROJ-1", "PROJ-2"])
 
     assert entries == [
-        ("PROJ-1", 3600, 1.0, "Alice"),
-        ("PROJ-2", 0, 0.0, "Alice"),
+        ("PROJ-1", 3600, 1.0, "Alice", None),
+        ("PROJ-2", 0, 0.0, "Alice", None),
     ]
 
 
@@ -146,8 +146,8 @@ def test_fetch_time_entries_filters_by_date_range(monkeypatch) -> None:
     )
 
     assert entries == [
-        ("PROJ-1", 1800, 0.5, "Alice"),
-        ("PROJ-1", 1200, 0.33, "Alice"),
+        ("PROJ-1", 1800, 0.5, "Alice", date(2024, 1, 2)),
+        ("PROJ-1", 1200, 0.33, "Alice", date(2024, 1, 3)),
     ]
 
 
@@ -174,7 +174,7 @@ def test_fetch_time_entries_handles_missing_issue(monkeypatch, capsys) -> None:
     monkeypatch.setattr("jira_time_entries_export._iter_worklogs", fake_iter)
     entries = jtee.fetch_time_entries(config, ["MISSING-1", "PROJ-1"])
 
-    assert entries == [("PROJ-1", 3600, 1.0, "Alice")]
+    assert entries == [("PROJ-1", 3600, 1.0, "Alice", None)]
     captured = capsys.readouterr()
     assert "MISSING-1" in captured.err
     assert "HTTP 404" in captured.err
@@ -182,8 +182,8 @@ def test_fetch_time_entries_handles_missing_issue(monkeypatch, capsys) -> None:
 
 def test_write_csv_outputs_header_and_rows(tmp_path) -> None:
     entries = [
-        ("PROJ-1", 3600, 1.0, "Alice"),
-        ("PROJ-2", 1800, 0.5, "Bob"),
+        ("PROJ-1", 3600, 1.0, "Alice", date(2024, 1, 2)),
+        ("PROJ-2", 1800, 0.5, "Bob", date(2024, 1, 3)),
     ]
     path = tmp_path / "out.csv"
     jtee.write_csv(str(path), entries)
@@ -191,10 +191,10 @@ def test_write_csv_outputs_header_and_rows(tmp_path) -> None:
     rows = path.read_text(encoding="utf-8").splitlines()
     assert (
         rows[0]
-        == "JIRA Identifier (Issue Key),Time Spent,Time Spent In Hours,UserName"
+        == "JIRA Identifier (Issue Key),Time Spent,Time Spent In Hours,UserName,Worklog Date"
     )
-    assert rows[1] == "PROJ-1,3600,1.0,Alice"
-    assert rows[2] == "PROJ-2,1800,0.5,Bob"
+    assert rows[1] == "PROJ-1,3600,1.0,Alice,2024-01-02"
+    assert rows[2] == "PROJ-2,1800,0.5,Bob,2024-01-03"
 
 
 def test_load_jira_config_uses_config_file(monkeypatch, tmp_path) -> None:
