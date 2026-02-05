@@ -55,3 +55,4 @@ Output columns:
 - Time Spent (seconds)
 - Time Spent In Hours
 - UserName
+- Worklog Date (YYYY-MM-DD)
