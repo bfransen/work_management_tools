@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from unittest import mock
 
 import pytest
@@ -99,6 +100,54 @@ def test_fetch_time_entries_filters_by_user(monkeypatch) -> None:
     assert entries == [
         ("PROJ-1", 3600, 1.0, "Alice"),
         ("PROJ-2", 0, 0.0, "Alice"),
+    ]
+
+
+def test_fetch_time_entries_filters_by_date_range(monkeypatch) -> None:
+    config = jtee.JiraConfig(
+        base_url="https://example.atlassian.net",
+        email="user@example.com",
+        api_token="token",
+        worklog_user="abc123",
+        api_version="3",
+    )
+    worklogs = [
+        {
+            "author": {"accountId": "abc123", "displayName": "Alice"},
+            "timeSpentSeconds": 3600,
+            "started": "2024-01-01T08:00:00.000+0000",
+        },
+        {
+            "author": {"accountId": "abc123", "displayName": "Alice"},
+            "timeSpentSeconds": 1800,
+            "started": "2024-01-02T08:00:00.000+0000",
+        },
+        {
+            "author": {"accountId": "abc123", "displayName": "Alice"},
+            "timeSpentSeconds": 1200,
+            "started": "2024-01-03T08:00:00+0000",
+        },
+        {
+            "author": {"accountId": "abc123", "displayName": "Alice"},
+            "timeSpentSeconds": 600,
+            "started": "2024-01-04T08:00:00.000+0000",
+        },
+    ]
+
+    def fake_iter(base_url, auth_header, api_version, issue_key):
+        return worklogs
+
+    monkeypatch.setattr("jira_time_entries_export._iter_worklogs", fake_iter)
+    entries = jtee.fetch_time_entries(
+        config,
+        ["PROJ-1"],
+        start_date=date(2024, 1, 2),
+        end_date=date(2024, 1, 3),
+    )
+
+    assert entries == [
+        ("PROJ-1", 1800, 0.5, "Alice"),
+        ("PROJ-1", 1200, 0.33, "Alice"),
     ]
 
 
